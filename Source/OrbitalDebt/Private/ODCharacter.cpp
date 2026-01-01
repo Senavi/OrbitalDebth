@@ -1,5 +1,5 @@
-#include "ODWeapon.h"
 #include "ODCharacter.h"
+#include "ODWeapon.h"
 #include "GameFramework/SpringArmComponent.h"
 #include "ODInventoryComponent.h" // Не забудь инклюд!
 #include "Camera/CameraComponent.h"
@@ -400,58 +400,49 @@ void AODCharacter::UpdateAmmoHUD()
 
 void AODCharacter::PerformInteractionCheck()
 {
-	if (!FollowCamera) return;
+	if (!FollowCamera || !CameraBoom) return;
 
-	// ... (Код расчета Start и End трейса оставляем как был) ...
+	// Начало трейса - камера (она далеко сзади)
 	FVector Start = FollowCamera->GetComponentLocation();
-	FVector End = Start + (FollowCamera->GetForwardVector() * InteractionDistance);
+    
+	// Длина луча теперь = Расстояние от камеры до игрока + Дистанция взаимодействия
+	float CombinedDistance = CameraBoom->TargetArmLength + InteractionDistance;
+    
+	// Конец луча
+	FVector End = Start + (FollowCamera->GetForwardVector() * CombinedDistance);
 
 	FHitResult HitResult;
 	FCollisionQueryParams Params;
 	Params.AddIgnoredActor(this);
-	if (InventoryComponent->GetCurrentWeapon()) Params.AddIgnoredActor(InventoryComponent->GetCurrentWeapon());
+    
+	// Игнорируем оружие, чтобы не "втыкаться" в него взглядом
+	if (GetCurrentWeapon()) Params.AddIgnoredActor(GetCurrentWeapon());
 
 	bool bHit = GetWorld()->LineTraceSingleByChannel(HitResult, Start, End, ECC_Visibility, Params);
 
-	// Логика обновления HUD
+	// Дальше ваша логика проверки интерфейса без изменений...
 	if (bHit && HitResult.GetActor())
 	{
 		AActor* HitActor = HitResult.GetActor();
 
-		// Если это ТОТ ЖЕ актер, на которого мы уже смотрим - ничего не делаем
-		if (HitActor == FocusedActor) 
-		{
-			return; 
-		}
+		if (HitActor == FocusedActor) return; 
 
-		// Если это НОВЫЙ актер и он Интерактивный
 		if (HitActor->Implements<UODInteractInterface>())
 		{
 			FocusedActor = HitActor;
-			
-			// ПОКАЗЫВАЕМ ТЕКСТ
 			if (PlayerHUD)
 			{
-				// Получаем текст из интерфейса предмета
 				FText Message = IODInteractInterface::Execute_GetInteractText(HitActor);
 				PlayerHUD->SetInteractionPrompt(true, Message);
 			}
-			return; // Выходим
+			return; 
 		}
 	}
 
-	// ЕСЛИ МЫ ЗДЕСЬ - значит мы смотрим в пустоту или на скучную стену
-	
-	// Если раньше мы на что-то смотрели, а теперь нет -> Очищаем
 	if (FocusedActor)
 	{
 		FocusedActor = nullptr;
-		
-		// ПРЯЧЕМ ТЕКСТ
-		if (PlayerHUD)
-		{
-			PlayerHUD->SetInteractionPrompt(false);
-		}
+		if (PlayerHUD) PlayerHUD->SetInteractionPrompt(false);
 	}
 }
 
@@ -564,5 +555,5 @@ bool AODCharacter::GetIsSprinting_Implementation() const
 
 bool AODCharacter::HasWeapon_Implementation() const
 {
-	return (GetCurrentWeapon() != nullptr);
+	return (InventoryComponent->GetCurrentWeapon() != nullptr);
 }
