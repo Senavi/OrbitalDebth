@@ -147,7 +147,7 @@ void AODWeapon::Reload()
 	bIsReloading = true;
 
 	// Расчет времени перезарядки
-	float ReloadDuration = 2.0f; // Дефолт, если нет анимации
+	float ReloadDuration = 1.5f; // Дефолт, если нет анимации
 	
 	// ВАЖНЫЙ МОМЕНТ:
 	// Оружие само не знает, кто его держит (Игрок или Бот).

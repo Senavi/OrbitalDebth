@@ -14,9 +14,9 @@ AODAIController::AODAIController()
 	SightConfig = CreateDefaultSubobject<UAISenseConfig_Sight>(TEXT("SightConfig"));
 
 	// 3. Настраиваем параметры
-	SightConfig->SightRadius = 1500.0f; // Видит на 15 метров
-	SightConfig->LoseSightRadius = 2000.0f; // Теряет из виду на 20 метрах
-	SightConfig->PeripheralVisionAngleDegrees = 90.0f; // Угол обзора (как у человека)
+	SightConfig->SightRadius = 50500.0f; // Видит на 15 метров
+	SightConfig->LoseSightRadius = 85000.0f; // Теряет из виду на 20 метрах
+	SightConfig->PeripheralVisionAngleDegrees = 145.0f; // Угол обзора (как у человека)
 	
 	// Что именно мы хотим замечать? (Врагов, друзей, нейтралов)
 	SightConfig->DetectionByAffiliation.bDetectEnemies = true;

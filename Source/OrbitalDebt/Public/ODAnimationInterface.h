@@ -28,4 +28,8 @@ public:
 	// (Опционально) Есть ли оружие в руках?
 	UFUNCTION(BlueprintNativeEvent, BlueprintCallable, Category = "Animation")
 	bool HasWeapon() const;
+	
+	// Возвращает угол наклона прицеливания для Aim Offset
+	UFUNCTION(BlueprintNativeEvent, BlueprintCallable, Category = "Animation")
+	float GetAimPitch() const;
 };

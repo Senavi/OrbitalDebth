@@ -358,9 +358,6 @@ void AODCharacter::Reload(const FInputActionValue& Value)
 {
 	if (InventoryComponent->GetCurrentWeapon())
 	{
-		// 1. Логика оружия (запустить таймер и флаг)
-		InventoryComponent->GetCurrentWeapon()->Reload();
-
 		// 2. Визуал (проиграть анимацию рук)
 		// Убедись, что в оружии выбран правильный монтаж (Reload_Rifle)
 		if (InventoryComponent->GetCurrentWeapon()->ReloadMontage)
@@ -368,7 +365,15 @@ void AODCharacter::Reload(const FInputActionValue& Value)
 			UAnimInstance* AnimInstance = GetMesh()->GetAnimInstance();
 			if (AnimInstance)
 			{
-				AnimInstance->Montage_Play(InventoryComponent->GetCurrentWeapon()->ReloadMontage);
+				if (InventoryComponent->GetCurrentWeapon()->CurrentAmmo >= InventoryComponent->GetCurrentWeapon()->MagCapacity)
+				{
+					UE_LOG(LogTemp, Error, TEXT("FULL AMMO!!"));
+				} else
+				{
+					// 1. Логика оружия (запустить таймер и флаг)
+					InventoryComponent->GetCurrentWeapon()->Reload();
+					AnimInstance->Montage_Play(InventoryComponent->GetCurrentWeapon()->ReloadMontage);
+				}
 			}
 		}
 	}
@@ -556,4 +561,19 @@ bool AODCharacter::GetIsSprinting_Implementation() const
 bool AODCharacter::HasWeapon_Implementation() const
 {
 	return (InventoryComponent->GetCurrentWeapon() != nullptr);
+}
+
+float AODCharacter::GetAimPitch_Implementation() const
+{
+	if (!GetController()) return 0.0f;
+
+	// Получаем разницу между направлением взгляда и поворотом тела
+	FRotator ControlRot = GetControlRotation();
+	FRotator ActorRot = GetActorRotation();
+    
+	// Вычисляем дельту и нормализуем её (чтобы избежать резких перескоков 0-360)
+	FRotator Delta = ControlRot - ActorRot;
+	Delta.Normalize();
+    
+	return Delta.Pitch;
 }

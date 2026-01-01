@@ -33,6 +33,8 @@ protected:
 
 public:	
 	
+	virtual float GetAimPitch_Implementation() const override;
+	
 	// Флаг спринта для интерфейса анимации
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "AI State")
 	bool bIsSprinting = false;

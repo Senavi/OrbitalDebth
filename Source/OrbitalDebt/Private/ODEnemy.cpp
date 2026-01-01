@@ -244,3 +244,15 @@ bool AODEnemy::HasWeapon_Implementation() const
 {
 	return (InventoryComponent->GetCurrentWeapon() != nullptr);
 }
+
+float AODEnemy::GetAimPitch_Implementation() const
+{
+	// У ботов BaseAimRotation обычно смотрит на цель (TargetActor)
+	FRotator AimRot = GetBaseAimRotation();
+	FRotator ActorRot = GetActorRotation();
+    
+	FRotator Delta = AimRot - ActorRot;
+	Delta.Normalize();
+    
+	return Delta.Pitch;
+}
