@@ -28,6 +28,9 @@ void AODEnemy::BeginPlay()
 {
 	Super::BeginPlay();
 	
+	// Устанавливаем начальную скорость патрулирования
+	GetCharacterMovement()->MaxWalkSpeed = PatrolSpeed;
+	
 	CurrentHealth = MaxHealth; // (это уже было)
 	
 	if (InventoryComponent)
@@ -94,7 +97,7 @@ void AODEnemy::Attack()
 	// 2. Стреляем
 	Weapon->StartFire(); // Используй локальную переменную Weapon, а не CurrentWeapon
 
-	float BurstTime = FMath::RandRange(0.2f, 0.6f);
+	float BurstTime = FMath::RandRange(0.2f, 0.10f);
 	GetWorldTimerManager().SetTimer(TimerHandle_BurstStop, this, &AODEnemy::StopFire, BurstTime, false);
 }
 
@@ -117,6 +120,7 @@ void AODEnemy::Reload()
 		if (Weapon->ReloadMontage)
 		{
 			UAnimInstance* AnimInstance = GetMesh()->GetAnimInstance();
+			UE_LOG(LogTemp, Warning, TEXT("REload Montage found!"))
 			if (AnimInstance)
 			{
 				AnimInstance->Montage_Play(Weapon->ReloadMontage);
@@ -225,8 +229,15 @@ bool AODEnemy::GetIsAiming_Implementation() const
 
 bool AODEnemy::GetIsSprinting_Implementation() const
 {
-	// Боты обычно просто бегают, если скорость выше ходьбы
-	return GetVelocity().Size() > 300.0f; 
+	// Возвращаем наше состояние спринта в AnimBP через интерфейс 
+	return bIsSprinting;
+}
+
+void AODEnemy::SetSprinting(bool bNewSprint)
+{
+	bIsSprinting = bNewSprint;
+	// Меняем реальную скорость компонента передвижения
+	GetCharacterMovement()->MaxWalkSpeed = bIsSprinting ? ChaseSpeed : PatrolSpeed;
 }
 
 bool AODEnemy::HasWeapon_Implementation() const

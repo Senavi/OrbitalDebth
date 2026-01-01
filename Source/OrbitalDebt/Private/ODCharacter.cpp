@@ -416,7 +416,7 @@ void AODCharacter::PerformInteractionCheck()
 	Params.AddIgnoredActor(this);
     
 	// Игнорируем оружие, чтобы не "втыкаться" в него взглядом
-	if (GetCurrentWeapon()) Params.AddIgnoredActor(GetCurrentWeapon());
+	if (InventoryComponent->GetCurrentWeapon()) Params.AddIgnoredActor(InventoryComponent->GetCurrentWeapon());
 
 	bool bHit = GetWorld()->LineTraceSingleByChannel(HitResult, Start, End, ECC_Visibility, Params);
 

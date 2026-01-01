@@ -3,6 +3,7 @@
 #include "Perception/AIPerceptionComponent.h"
 #include "Perception/AISenseConfig_Sight.h"
 #include "ODCharacter.h" // Чтобы мы могли отличить Игрока от стены
+#include "ODEnemy.h"
 
 AODAIController::AODAIController()
 {

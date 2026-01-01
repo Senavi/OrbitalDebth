@@ -32,6 +32,23 @@ protected:
 	class UODInventoryComponent* InventoryComponent;
 
 public:	
+	
+	// Флаг спринта для интерфейса анимации
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "AI State")
+	bool bIsSprinting = false;
+
+	// Скорость при патрулировании
+	UPROPERTY(EditAnywhere, Category = "AI Stats")
+	float PatrolSpeed = 300.0f;
+
+	// Скорость при погоне (спринт)
+	UPROPERTY(EditAnywhere, Category = "AI Stats")
+	float ChaseSpeed = 800.0f; // Как у игрока 
+
+	// Функция для включения/выключения спринта
+	UFUNCTION(BlueprintCallable, Category = "AI Combat")
+	void SetSprinting(bool bNewSprint);
+	
 	// --- ХАРАКТЕРИСТИКИ ---
 
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Stats")
