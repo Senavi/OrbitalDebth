@@ -41,6 +41,8 @@ public:
 	
 	virtual float GetAimPitch_Implementation() const override;
 	
+	void SelectPrimary();
+	void SelectSecondary();
 	
 	virtual void Tick(float DeltaTime) override;
 	virtual void SetupPlayerInputComponent(class UInputComponent* PlayerInputComponent) override;

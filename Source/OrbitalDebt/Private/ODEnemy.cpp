@@ -82,12 +82,24 @@ void AODEnemy::Attack()
 	// ✅ Получаем оружие из инвентаря
 	AODWeapon* Weapon = InventoryComponent->GetCurrentWeapon(); 
 	
+	// // Якщо патрони скінчилися - перемикаємось на Secondary
+	// if (!Weapon || Weapon->CurrentAmmo <= 0) {
+	// 	if (InventoryComponent->ActiveWeaponSlot == EEquipmentSlot::Primary) {
+	// 		InventoryComponent->SwitchWeapon(EEquipmentSlot::Secondary);
+	// 		return; // Даємо час на спавн зброї
+	// 	}
+	// }
+	
 	// Включаем стойку прицеливания
 	bIsAiming = true;
 
 	if (!Weapon) return; // Если оружия нет - выходим
+	
+	if (Weapon && Weapon->CurrentAmmo > 0) {
+		Weapon->StartFire();
+	} else
 
-	// 1. Проверяем патроны
+	// // 1. Проверяем патроны
 	if (Weapon->CurrentAmmo <= 0)
 	{
 		Reload();

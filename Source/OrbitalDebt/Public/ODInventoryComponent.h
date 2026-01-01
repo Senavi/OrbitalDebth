@@ -67,6 +67,9 @@ protected:
     // Ссылка на реальное оружие в руках (которое сейчас заспаунено)
     UPROPERTY()
     AODWeapon* SpawnedPrimaryWeapon;
+    
+    // Допоміжна функція для отримання посилання на структуру по слоту
+    FInventoryItem* GetItemSlot(EEquipmentSlot Slot, int32 Index);
 
 public: 
     // --- ФУНКЦИИ ---
@@ -98,4 +101,16 @@ public:
     // Геттер, чтобы Персонаж мог получить доступ к оружию для стрельбы
     UFUNCTION(BlueprintCallable)
     AODWeapon* GetCurrentWeapon() const { return SpawnedPrimaryWeapon; }
+    
+    // Поточний активний слот зброї
+    UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Equipment")
+    EEquipmentSlot ActiveWeaponSlot = EEquipmentSlot::Primary;
+
+    // Головна функція для Drag & Drop переміщення
+    UFUNCTION(BlueprintCallable, Category = "Inventory")
+    void TransferItem(EEquipmentSlot SourceSlot, int32 SourceIndex, EEquipmentSlot TargetSlot, int32 TargetIndex);
+
+    // Функція перемикання зброї
+    UFUNCTION(BlueprintCallable, Category = "Inventory")
+    void SwitchWeapon(EEquipmentSlot NewSlot);
 };

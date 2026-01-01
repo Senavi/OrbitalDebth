@@ -203,6 +203,9 @@ void AODCharacter::SetupPlayerInputComponent(UInputComponent* PlayerInputCompone
 		
 		// В SetupPlayerInputComponent добавь (предварительно создав Action IA_Drop):
 		EnhancedInputComponent->BindAction(DropAction, ETriggerEvent::Started, this, &AODCharacter::DebugDropItem);
+		
+		PlayerInputComponent->BindAction("SelectPrimary", IE_Pressed, this, &AODCharacter::SelectPrimary);
+		PlayerInputComponent->BindAction("SelectSecondary", IE_Pressed, this, &AODCharacter::SelectSecondary);
 	}
 }
 
@@ -576,4 +579,12 @@ float AODCharacter::GetAimPitch_Implementation() const
 	Delta.Normalize();
     
 	return Delta.Pitch;
+}
+
+void AODCharacter::SelectPrimary() {
+	if (InventoryComponent) InventoryComponent->SwitchWeapon(EEquipmentSlot::Primary);
+}
+
+void AODCharacter::SelectSecondary() {
+	if (InventoryComponent) InventoryComponent->SwitchWeapon(EEquipmentSlot::Secondary);
 }

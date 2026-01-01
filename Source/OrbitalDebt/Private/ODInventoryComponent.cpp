@@ -244,3 +244,67 @@ void UODInventoryComponent::DropEquippedItem(EEquipmentSlot SlotType)
     
     UE_LOG(LogTemp, Warning, TEXT("Dropped Equipped Item!"));
 }
+
+// ODInventoryComponent.cpp
+
+FInventoryItem* UODInventoryComponent::GetItemSlot(EEquipmentSlot Slot, int32 Index)
+{
+    if (Slot == EEquipmentSlot::None) {
+        return Items.IsValidIndex(Index) ? &Items[Index] : nullptr;
+    }
+    if (Slot == EEquipmentSlot::Primary) return &PrimaryWeapon;
+    if (Slot == EEquipmentSlot::Secondary) return &SecondaryWeapon;
+    if (Slot == EEquipmentSlot::Body) return &ArmorChest;
+    return nullptr;
+}
+
+void UODInventoryComponent::TransferItem(EEquipmentSlot SourceSlot, int32 SourceIndex, EEquipmentSlot TargetSlot, int32 TargetIndex)
+{
+    FInventoryItem* Source = GetItemSlot(SourceSlot, SourceIndex);
+    FInventoryItem* Target = GetItemSlot(TargetSlot, TargetIndex);
+
+    if (!Source || !Source->IsValid()) return;
+
+    // ПЕРЕВІРКА: чи підходить предмет для цільового слоту екіпіровки?
+    if (TargetSlot != EEquipmentSlot::None) {
+        if (Source->ItemData->EquipSlotType != TargetSlot) return; 
+    }
+
+    // ЛОГІКА ОБМІНУ (SWAP)
+    FInventoryItem Temp = *Target;
+    *Target = *Source;
+    *Source = Temp;
+
+    // Якщо перемістили щось в/з рюкзака, видаляємо порожні записи
+    if (SourceSlot == EEquipmentSlot::None && !Source->IsValid()) {
+        Items.RemoveAt(SourceIndex);
+    }
+
+    // Оновлюємо візуал зброї, якщо змінився активний слот
+    if (TargetSlot == ActiveWeaponSlot || SourceSlot == ActiveWeaponSlot) {
+        SwitchWeapon(ActiveWeaponSlot);
+    }
+
+    OnInventoryUpdated.Broadcast();
+}
+
+void UODInventoryComponent::SwitchWeapon(EEquipmentSlot NewSlot)
+{
+    if (NewSlot != EEquipmentSlot::Primary && NewSlot != EEquipmentSlot::Secondary) return;
+    
+    ActiveWeaponSlot = NewSlot;
+    FInventoryItem* WeaponToEquip = GetItemSlot(ActiveWeaponSlot, -1);
+
+    // Знищуємо стару модель зброї в руках
+    if (SpawnedPrimaryWeapon) {
+        SpawnedPrimaryWeapon->Destroy();
+        SpawnedPrimaryWeapon = nullptr;
+    }
+
+    // Спавнимо нову модель, якщо в слоті є зброя
+    if (WeaponToEquip && WeaponToEquip->IsValid()) {
+        EquipItem(WeaponToEquip); 
+    }
+
+    OnInventoryUpdated.Broadcast();
+}
