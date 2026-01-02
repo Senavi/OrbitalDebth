@@ -31,7 +31,9 @@ AODCharacter::AODCharacter()
 	CameraBoom->SetupAttachment(RootComponent);
 	CameraBoom->TargetArmLength = 300.0f; 
 	CameraBoom->bUsePawnControlRotation = true; 
-	CameraBoom->SocketOffset = FVector(0.0f, 50.0f, 70.0f);
+    
+	// Ставим начальное смещение
+	CameraBoom->SocketOffset = FVector(0.0f, 60.0f, 70.0f);
 
 	FollowCamera = CreateDefaultSubobject<UCameraComponent>(TEXT("FollowCamera"));
 	FollowCamera->SetupAttachment(CameraBoom, USpringArmComponent::SocketName); 
@@ -47,11 +49,15 @@ AODCharacter::AODCharacter()
 void AODCharacter::BeginPlay()
 {
 	Super::BeginPlay();
-	
+    
 	GetCharacterMovement()->MaxWalkSpeed = WalkSpeed;
 	NormalWalkSpeed = GetCharacterMovement()->MaxWalkSpeed;
 	CurrentHealth = MaxHealth;
-	
+
+	// Запоминаем дефолтное положение камеры (Y = 60.0f)
+	DefaultSpringArmY = CameraBoom->SocketOffset.Y;
+	TargetSpringArmY = DefaultSpringArmY;
+    
 	if (PlayerHUDClass && IsLocallyControlled())
 	{
 		PlayerHUD = CreateWidget<UODPlayerHUD>(GetWorld(), PlayerHUDClass);
@@ -60,13 +66,13 @@ void AODCharacter::BeginPlay()
 			PlayerHUD->AddToViewport();
 			PlayerHUD->UpdateHealth(CurrentHealth, MaxHealth);
 		}
-		
+        
 		if (InventoryComponent)
 		{
 			InventoryComponent->OnInventoryUpdated.AddDynamic(this, &AODCharacter::OnInventoryUpdated);
 		}
 	}
-	
+    
 	if (APlayerController* PlayerController = Cast<APlayerController>(Controller))
 	{
 		if (UEnhancedInputLocalPlayerSubsystem* Subsystem = ULocalPlayer::GetSubsystem<UEnhancedInputLocalPlayerSubsystem>(PlayerController->GetLocalPlayer()))
@@ -74,7 +80,7 @@ void AODCharacter::BeginPlay()
 			Subsystem->AddMappingContext(DefaultMappingContext, 0);
 		}
 	}
-	
+    
 	if (InventoryComponent)
 	{
 		for (UODItemData* Item : DefaultLoadout)
@@ -82,7 +88,7 @@ void AODCharacter::BeginPlay()
 			InventoryComponent->TryAddItem(Item); 
 		}
 	}
-	
+    
 	if (FollowCamera)
 	{
 		DefaultFOV = FollowCamera->FieldOfView;
@@ -92,55 +98,123 @@ void AODCharacter::BeginPlay()
 void AODCharacter::Tick(float DeltaTime)
 {
 	Super::Tick(DeltaTime);
-	
+    
 	if (FollowCamera)
 	{
+		// Зум прицеливания
 		float TargetFOV = bIsAiming ? AimedFOV : DefaultFOV;
 		float CurrentFOV = FollowCamera->FieldOfView;
 		float NewFOV = FMath::FInterpTo(CurrentFOV, TargetFOV, DeltaTime, ZoomInterpSpeed);
 		FollowCamera->SetFieldOfView(NewFOV);
-		
+        
+		// Плавная смена плеча камеры
+		float CurrentY = CameraBoom->SocketOffset.Y;
+		if (!FMath::IsNearlyEqual(CurrentY, TargetSpringArmY, 0.1f))
+		{
+			float NewY = FMath::FInterpTo(CurrentY, TargetSpringArmY, DeltaTime, 10.0f);
+			CameraBoom->SocketOffset.Y = NewY;
+		}
+
 		PerformInteractionCheck();
 	}
 }
 
 void AODCharacter::SetupPlayerInputComponent(UInputComponent* PlayerInputComponent)
 {
-	if (UEnhancedInputComponent* EnhancedInputComponent = Cast<UEnhancedInputComponent>(PlayerInputComponent))
-	{
-		EnhancedInputComponent->BindAction(MoveAction, ETriggerEvent::Triggered, this, &AODCharacter::Move);
-		EnhancedInputComponent->BindAction(LookAction, ETriggerEvent::Triggered, this, &AODCharacter::Look);
-		EnhancedInputComponent->BindAction(ShootAction, ETriggerEvent::Started, this, &AODCharacter::StartWeaponFire);
-		EnhancedInputComponent->BindAction(ShootAction, ETriggerEvent::Completed, this, &AODCharacter::StopWeaponFire);
-		EnhancedInputComponent->BindAction(AimAction, ETriggerEvent::Started, this, &AODCharacter::StartAiming);
-		EnhancedInputComponent->BindAction(AimAction, ETriggerEvent::Completed, this, &AODCharacter::StopAiming);
-		EnhancedInputComponent->BindAction(ReloadAction, ETriggerEvent::Started, this, &AODCharacter::Reload);
-		EnhancedInputComponent->BindAction(InteractAction, ETriggerEvent::Started, this, &AODCharacter::Interact);
-		EnhancedInputComponent->BindAction(InventoryAction, ETriggerEvent::Started, this, &AODCharacter::ToggleInventory);
-		EnhancedInputComponent->BindAction(JumpAction, ETriggerEvent::Started, this, &AODCharacter::PerformJump);
-		EnhancedInputComponent->BindAction(JumpAction, ETriggerEvent::Completed, this, &ACharacter::StopJumping);
-		EnhancedInputComponent->BindAction(SprintAction, ETriggerEvent::Started, this, &AODCharacter::StartSprint);
-		EnhancedInputComponent->BindAction(SprintAction, ETriggerEvent::Completed, this, &AODCharacter::StopSprint);
-		
-		// Используем DropActiveWeapon вместо старого DebugDrop
-		EnhancedInputComponent->BindAction(DropAction, ETriggerEvent::Started, this, &AODCharacter::DebugDropItem);
-	}
+    if (UEnhancedInputComponent* EnhancedInputComponent = Cast<UEnhancedInputComponent>(PlayerInputComponent))
+    {
+        EnhancedInputComponent->BindAction(MoveAction, ETriggerEvent::Triggered, this, &AODCharacter::Move);
+        EnhancedInputComponent->BindAction(LookAction, ETriggerEvent::Triggered, this, &AODCharacter::Look);
+        EnhancedInputComponent->BindAction(ShootAction, ETriggerEvent::Started, this, &AODCharacter::StartWeaponFire);
+        EnhancedInputComponent->BindAction(ShootAction, ETriggerEvent::Completed, this, &AODCharacter::StopWeaponFire);
+        EnhancedInputComponent->BindAction(AimAction, ETriggerEvent::Started, this, &AODCharacter::StartAiming);
+        EnhancedInputComponent->BindAction(AimAction, ETriggerEvent::Completed, this, &AODCharacter::StopAiming);
+        EnhancedInputComponent->BindAction(ReloadAction, ETriggerEvent::Started, this, &AODCharacter::Reload);
+        EnhancedInputComponent->BindAction(InteractAction, ETriggerEvent::Started, this, &AODCharacter::Interact);
+        EnhancedInputComponent->BindAction(InventoryAction, ETriggerEvent::Started, this, &AODCharacter::ToggleInventory);
+        EnhancedInputComponent->BindAction(JumpAction, ETriggerEvent::Started, this, &AODCharacter::PerformJump);
+        EnhancedInputComponent->BindAction(JumpAction, ETriggerEvent::Completed, this, &ACharacter::StopJumping);
+        EnhancedInputComponent->BindAction(SprintAction, ETriggerEvent::Started, this, &AODCharacter::StartSprint);
+        EnhancedInputComponent->BindAction(SprintAction, ETriggerEvent::Completed, this, &AODCharacter::StopSprint);
+        EnhancedInputComponent->BindAction(DropAction, ETriggerEvent::Started, this, &AODCharacter::DebugDropItem);
+    }
 
-	// Хотбар 1-8
-	PlayerInputComponent->BindAction<TDelegate<void(int32)>>("Hotbar1", IE_Pressed, InventoryComponent, &UODInventoryComponent::SelectHotbarSlot, 0);
-	PlayerInputComponent->BindAction<TDelegate<void(int32)>>("Hotbar2", IE_Pressed, InventoryComponent, &UODInventoryComponent::SelectHotbarSlot, 1);
-	PlayerInputComponent->BindAction<TDelegate<void(int32)>>("Hotbar3", IE_Pressed, InventoryComponent, &UODInventoryComponent::SelectHotbarSlot, 2);
-	// ... добавьте остальные по аналогии
+    // Биндинг клавиш 1-8 для смены оружия (Проверьте Project Settings -> Input -> Action Mappings!)
+    PlayerInputComponent->BindAction<TDelegate<void(int32)>>("Hotbar1", IE_Pressed, InventoryComponent, &UODInventoryComponent::SelectHotbarSlot, 0);
+    PlayerInputComponent->BindAction<TDelegate<void(int32)>>("Hotbar2", IE_Pressed, InventoryComponent, &UODInventoryComponent::SelectHotbarSlot, 1);
+    PlayerInputComponent->BindAction<TDelegate<void(int32)>>("Hotbar3", IE_Pressed, InventoryComponent, &UODInventoryComponent::SelectHotbarSlot, 2);
+    PlayerInputComponent->BindAction<TDelegate<void(int32)>>("Hotbar4", IE_Pressed, InventoryComponent, &UODInventoryComponent::SelectHotbarSlot, 3);
+
+    // Смена камеры на X
+    PlayerInputComponent->BindAction("CameraSwap", IE_Pressed, this, &AODCharacter::ToggleCameraSide);
+    
+    // Слайдинг на Alt
+    PlayerInputComponent->BindAction("Slide", IE_Pressed, this, &AODCharacter::StartSlide);
+}
+
+void AODCharacter::ToggleCameraSide()
+{
+	// Если сейчас справа (+), ставим влево (-), и наоборот
+	if (TargetSpringArmY > 0) TargetSpringArmY = -DefaultSpringArmY;
+	else TargetSpringArmY = DefaultSpringArmY;
+}
+
+void AODCharacter::StartSlide()
+{
+	// Слайдим, только если бежим, на земле и не в откате
+	if (bIsSprinting && GetCharacterMovement()->IsMovingOnGround() && !bIsSliding)
+	{
+		bIsSliding = true;
+        
+		// Уменьшаем трение, чтобы скользить
+		GetCharacterMovement()->GroundFriction = 0.0f;
+		GetCharacterMovement()->BrakingDecelerationWalking = 0.0f;
+        
+		// Даем импульс вперед (или используем текущую скорость)
+		FVector SlideDirection = GetActorForwardVector();
+		GetCharacterMovement()->Velocity = SlideDirection * SlideSpeed;
+
+		// Играем анимацию (Монтаж должен быть создан в редакторе)
+		if (SlideMontage)
+		{
+			PlayAnimMontage(SlideMontage);
+		}
+        
+		// Уменьшаем капсулу (чтобы проезжать под препятствиями)
+		GetCapsuleComponent()->SetCapsuleHalfHeight(48.0f); 
+
+		// Таймер остановки
+		GetWorldTimerManager().SetTimer(TimerHandle_Slide, this, &AODCharacter::StopSlide, SlideDuration, false);
+	}
+}
+
+void AODCharacter::StopSlide()
+{
+	bIsSliding = false;
+    
+	// Возвращаем физику ходьбы
+	GetCharacterMovement()->GroundFriction = 8.0f; // Стандартное значение
+	GetCharacterMovement()->BrakingDecelerationWalking = 2048.0f; 
+    
+	// Возвращаем капсулу
+	GetCapsuleComponent()->SetCapsuleHalfHeight(96.0f);
+    
+	// Если все еще держим Shift - бежим, иначе идем
+	if (bIsSprinting) GetCharacterMovement()->MaxWalkSpeed = SprintSpeed;
+	else GetCharacterMovement()->MaxWalkSpeed = WalkSpeed;
 }
 
 void AODCharacter::PerformJump()
 {
+	if (bIsSliding) return; // Не прыгать в подкате
 	Jump();
 	if (JumpSound) UGameplayStatics::PlaySoundAtLocation(this, JumpSound, GetActorLocation());
 }
 
 void AODCharacter::Move(const FInputActionValue& Value)
 {
+	if (bIsSliding) return; // Не управляем движением во время подката
+    
 	FVector2D MovementVector = Value.Get<FVector2D>();
 	if (Controller != nullptr)
 	{
@@ -354,7 +428,12 @@ void AODCharacter::DebugDropItem()
 bool AODCharacter::GetIsAiming_Implementation() const { return bIsAiming; }
 bool AODCharacter::GetIsSprinting_Implementation() const { return bIsSprinting; }
 bool AODCharacter::HasWeapon_Implementation() const { return (GetCurrentWeapon() != nullptr); }
-AODWeapon* AODCharacter::GetCurrentWeapon() const { return InventoryComponent ? InventoryComponent->GetCurrentWeapon() : nullptr; }
+
+// Геттер оружия
+AODWeapon* AODCharacter::GetCurrentWeapon() const { 
+	return InventoryComponent ? InventoryComponent->GetCurrentWeapon() : nullptr; 
+}
+
 // AIM Pitch
 float AODCharacter::GetAimPitch_Implementation() const
 {

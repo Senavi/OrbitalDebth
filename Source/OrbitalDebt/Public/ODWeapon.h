@@ -22,6 +22,9 @@ public:
 protected:
 	virtual void BeginPlay() override;
 	
+	UPROPERTY(EditDefaultsOnly, Category = "Combat|VFX")
+	UMaterialInterface* BulletHoleDecal;
+	
 	// Эффект попадания по стенам (бетон, металл) - ПЕРЕИМЕНУЙ старый ImpactVFX в DefaultImpactVFX
 	UPROPERTY(EditDefaultsOnly, Category = "Combat|VFX")
 	UParticleSystem* DefaultImpactVFX;

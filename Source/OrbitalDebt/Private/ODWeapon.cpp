@@ -3,7 +3,8 @@
 #include "ODEnemy.h"
 #include "Components/SkeletalMeshComponent.h"
 #include "Components/ArrowComponent.h"
-#include "DrawDebugHelpers.h" // Нужен для рисования линий (дебаг)
+#include "DrawDebugHelpers.h"
+#include "Components/DecalComponent.h" // Важный инклюд!
 
 AODWeapon::AODWeapon()
 {
@@ -45,7 +46,7 @@ void AODWeapon::Fire()
         return;
     };
     
-    // Анимации и тряска (оставляем как было)
+    // Анимации и звуки... (оставляем как было)
     if (AActor* OwnerActor = GetOwner())
     {
         if (AODCharacter* Player = Cast<AODCharacter>(OwnerActor)) Player->PlayFireAnimation();
@@ -59,30 +60,25 @@ void AODWeapon::Fire()
                 PC->ClientStartCameraShake(FireCameraShake);
     }
     
-    // ИГРАЕМ ЗВУК
     if (FireSound) UGameplayStatics::PlaySoundAtLocation(this, FireSound, GetActorLocation());
     
-    // --- НОВАЯ ЛОГИКА ТРЕЙСА (TPS) ---
+    // --- ТРЕЙС ---
     FVector TraceStart;
     FVector TraceEnd;
     FVector ShotDirection;
 
-    // 1. Пытаемся получить камеру игрока (Стреляем из Глаз)
     APawn* OwnerPawn = Cast<APawn>(GetOwner());
     AController* OwnerController = OwnerPawn ? OwnerPawn->GetController() : nullptr;
 
-    // Если это Игрок с контроллером
     if (OwnerController && OwnerController->IsLocalPlayerController())
     {
         FVector CamLoc;
         FRotator CamRot;
-        OwnerController->GetPlayerViewPoint(CamLoc, CamRot); // Получаем позицию камеры
-            
+        OwnerController->GetPlayerViewPoint(CamLoc, CamRot);
         TraceStart = CamLoc;
         ShotDirection = CamRot.Vector();
         TraceEnd = TraceStart + (ShotDirection * FireRange);
     }
-    // Если это Бот (у него нет камеры) -> Стреляем по старинке из Дула
     else 
     {
         TraceStart = MuzzleArrow->GetComponentLocation();
@@ -98,28 +94,45 @@ void AODWeapon::Fire()
     bool bHasHit = GetWorld()->LineTraceSingleByChannel(Hit, TraceStart, TraceEnd, ECC_Visibility, QueryParams);
 
     // --- ВИЗУАЛ (ОТ ДУЛА) ---
-    // Пуля летит от оружия к точке, куда смотрела камера
     if (MuzzleArrow)
     {
         FVector MuzzleLocation = MuzzleArrow->GetComponentLocation();
         FVector ImpactPoint = bHasHit ? Hit.ImpactPoint : TraceEnd;
-        
-        // Рисуем линию от ствола
-        DrawDebugLine(GetWorld(), MuzzleLocation, ImpactPoint, FColor::Red, false, 1.0f, 0, 1.0f);
+        // Трассер
+        // DrawDebugLine(GetWorld(), MuzzleLocation, ImpactPoint, FColor::Red, false, 1.0f, 0, 1.0f);
     }
 
-    // --- УРОН ---
+    // --- ПОПАДАНИЕ ---
     if (bHasHit && Hit.GetActor())
     {
+        // 1. VFX частиц (Искры/Кровь)
         UParticleSystem* SelectedVFX = DefaultImpactVFX; 
         if (Hit.GetActor()->IsA(AODEnemy::StaticClass()) && EnemyImpactVFX) SelectedVFX = EnemyImpactVFX;
-
         if (SelectedVFX) UGameplayStatics::SpawnEmitterAtLocation(GetWorld(), SelectedVFX, Hit.ImpactPoint, Hit.ImpactNormal.Rotation());
 
+        // 2. ДЕКАЛЬ (След от пули)
+        // Спавним только если это НЕ враг (обычно на врагах декали выглядят плохо, или нужна спец. система)
+        if (BulletHoleDecal && !Hit.GetActor()->IsA(AODEnemy::StaticClass()))
+        {
+            // Поворачиваем декаль так, чтобы она "смотрела" от стены (-Hit.ImpactNormal)
+            FRotator DecalRotation = Hit.ImpactNormal.Rotation();
+            // Иногда нужно развернуть на 180, зависит от текстуры, попробуйте так:
+            DecalRotation.Roll = FMath::RandRange(0.0f, 360.0f); // Рандомный поворот дырки
+
+            UGameplayStatics::SpawnDecalAtLocation(
+                GetWorld(),
+                BulletHoleDecal,
+                FVector(5.0f, 5.0f, 5.0f), // Размер дырки (X, Y, Z)
+                Hit.ImpactPoint,
+                DecalRotation,
+                60.0f // Время жизни (10 сек)
+            );
+        }
+
+        // 3. Урон
         UGameplayStatics::ApplyPointDamage(Hit.GetActor(), Damage, ShotDirection, Hit, GetInstigatorController(), this, UDamageType::StaticClass());
     }
     
-    // Расход патронов
     if (!bInfiniteAmmo)
     {
         CurrentAmmo--;
@@ -127,6 +140,7 @@ void AODWeapon::Fire()
             if (AODCharacter* Player = Cast<AODCharacter>(OwnerActor)) Player->UpdateAmmoHUD();
     }
 }
+
 bool AODWeapon::CanFire() const
 {
 	return CurrentAmmo > 0;

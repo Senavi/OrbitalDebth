@@ -202,3 +202,12 @@ float AODEnemy::GetAimPitch_Implementation() const
 	Delta.Normalize();
 	return Delta.Pitch;
 }
+
+void AODEnemy::AttemptJump()
+{
+	// Простая проверка: если мы не падаем и не прыгаем
+	if (GetCharacterMovement()->IsMovingOnGround())
+	{
+		Jump();
+	}
+}

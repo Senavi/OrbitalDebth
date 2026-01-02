@@ -33,6 +33,9 @@ protected:
 
 public:	
 	
+	UFUNCTION(BlueprintCallable, Category = "AI")
+	void AttemptJump();
+	
 	virtual float GetAimPitch_Implementation() const override;
 	
 	// Флаг спринта для интерфейса анимации
