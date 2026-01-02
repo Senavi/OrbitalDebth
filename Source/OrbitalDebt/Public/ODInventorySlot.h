@@ -15,12 +15,12 @@ class ORBITALDEBT_API UODInventorySlot : public UUserWidget
 	
 public:
 	
-	// Тип слота: -1 = Рюкзак, иначе = EEquipmentSlot
-	UPROPERTY(BlueprintReadOnly, Category = "Slot Data")
+	// Тип слота. EditAnywhere = можно менять в дизайнере.
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Slot Data")
 	EEquipmentSlot AssignedSlotType = EEquipmentSlot::None;
 
-	// Индекс в массиве (только если это рюкзак)
-	UPROPERTY(BlueprintReadOnly, Category = "Slot Data")
+	// Индекс. EditAnywhere = можно менять в дизайнере.
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Slot Data")
 	int32 BackpackIndex = -1;
 
 	// --- ДОБАВЬ ВОТ ЭТУ СТРОКУ НИЖЕ: ---

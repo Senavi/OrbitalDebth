@@ -1,7 +1,7 @@
 #include "ODCharacter.h"
 #include "ODWeapon.h"
 #include "GameFramework/SpringArmComponent.h"
-#include "ODInventoryComponent.h" // Не забудь инклюд!
+#include "ODInventoryComponent.h"
 #include "Camera/CameraComponent.h"
 #include "Components/CapsuleComponent.h"
 #include "EnhancedInputComponent.h"
@@ -11,126 +11,78 @@
 #include "GameFramework/CharacterMovementComponent.h"
 #include "Kismet/GameplayStatics.h"
 
-// ODCharacter.cpp
-
 AODCharacter::AODCharacter()
 {
-    PrimaryActorTick.bCanEverTick = true;
+	PrimaryActorTick.bCanEverTick = true;
 
-    // 1. Настраиваем капсулу
-    GetCapsuleComponent()->InitCapsuleSize(42.f, 96.0f);
+	GetCapsuleComponent()->InitCapsuleSize(42.f, 96.0f);
 
-    // 2. ОТКЛЮЧАЕМ вращение персонажа вслед за камерой
-    // (Чтобы мы могли осмотреться вокруг, не поворачивая героя)
-    bUseControllerRotationPitch = false;
-    bUseControllerRotationYaw = false;
-    bUseControllerRotationRoll = false;
+	bUseControllerRotationPitch = false;
+	bUseControllerRotationYaw = false;
+	bUseControllerRotationRoll = false;
 
-    // 3. Настраиваем движение
-    // Персонаж будет поворачиваться в ту сторону, куда идет
-    GetCharacterMovement()->bOrientRotationToMovement = true; 
-    GetCharacterMovement()->RotationRate = FRotator(0.0f, 500.0f, 0.0f); // Скорость поворота
+	GetCharacterMovement()->bOrientRotationToMovement = true; 
+	GetCharacterMovement()->RotationRate = FRotator(0.0f, 500.0f, 0.0f); 
+	GetCharacterMovement()->JumpZVelocity = 700.f;
+	GetCharacterMovement()->AirControl = 0.35f;
+	GetCharacterMovement()->MaxWalkSpeed = 500.f;
 
-    GetCharacterMovement()->JumpZVelocity = 700.f;
-    GetCharacterMovement()->AirControl = 0.35f;
-    GetCharacterMovement()->MaxWalkSpeed = 500.f;
-    GetCharacterMovement()->MinAnalogWalkSpeed = 20.f;
-    GetCharacterMovement()->BrakingDecelerationWalking = 2000.f;
+	CameraBoom = CreateDefaultSubobject<USpringArmComponent>(TEXT("CameraBoom"));
+	CameraBoom->SetupAttachment(RootComponent);
+	CameraBoom->TargetArmLength = 300.0f; 
+	CameraBoom->bUsePawnControlRotation = true; 
+	CameraBoom->SocketOffset = FVector(0.0f, 50.0f, 70.0f);
 
-    // 4. Создаем ШТАТИВ (Spring Arm)
-    CameraBoom = CreateDefaultSubobject<USpringArmComponent>(TEXT("CameraBoom"));
-    CameraBoom->SetupAttachment(RootComponent);
-    CameraBoom->TargetArmLength = 300.0f; // Дистанция камеры (3 метра)
-    CameraBoom->bUsePawnControlRotation = true; // Штатив вращается за мышкой
-    
-    // Сдвигаем камеру чуть вправо и вверх (плечо)
-    CameraBoom->SocketOffset = FVector(0.0f, 50.0f, 70.0f);
+	FollowCamera = CreateDefaultSubobject<UCameraComponent>(TEXT("FollowCamera"));
+	FollowCamera->SetupAttachment(CameraBoom, USpringArmComponent::SocketName); 
+	FollowCamera->bUsePawnControlRotation = false; 
 
-    // 5. Создаем КАМЕРУ
-    FollowCamera = CreateDefaultSubobject<UCameraComponent>(TEXT("FollowCamera"));
-    FollowCamera->SetupAttachment(CameraBoom, USpringArmComponent::SocketName); // Крепим к концу штатива
-    FollowCamera->bUsePawnControlRotation = false; // Камера просто висит на штативе
+	GetMesh()->SetRelativeLocation(FVector(0.0f, 0.0f, -97.0f)); 
+	GetMesh()->SetRelativeRotation(FRotator(0.0f, -90.0f, 0.0f));
+	GetMesh()->SetOwnerNoSee(false); 
 
-    // 6. Настраиваем ТЕЛО (Mesh)
-    // ВАЖНО: Крепим к Капсуле (не к камере!)
-    // Опускаем вниз и поворачиваем
-    GetMesh()->SetRelativeLocation(FVector(0.0f, 0.0f, -97.0f)); 
-    GetMesh()->SetRelativeRotation(FRotator(0.0f, -90.0f, 0.0f));
-    
-    // Включаем видимость (игрок должен видеть себя)
-    GetMesh()->SetOwnerNoSee(false); 
-
-    // Создаем инвентарь (как и было)
-    InventoryComponent = CreateDefaultSubobject<UODInventoryComponent>(TEXT("PlayerInventory"));
+	InventoryComponent = CreateDefaultSubobject<UODInventoryComponent>(TEXT("PlayerInventory"));
 }
 
 void AODCharacter::BeginPlay()
 {
 	Super::BeginPlay();
 	
-	// Применяем настройки движения при старте
 	GetCharacterMovement()->MaxWalkSpeed = WalkSpeed;
-	GetCharacterMovement()->JumpZVelocity = JumpVelocity;
-	GetCharacterMovement()->AirControl = AirControlAmount;
-	
-	// Запоминаем скорость, настроенную в CharacterMovement (например, 600)
 	NormalWalkSpeed = GetCharacterMovement()->MaxWalkSpeed;
-	
-	// Полное здоровье при старте
 	CurrentHealth = MaxHealth;
 	
-	// --- UI SETUP ---
-	// Проверяем, что класс выбран в блюпринте и мы управляем персонажем локально (IsLocallyControlled)
 	if (PlayerHUDClass && IsLocallyControlled())
 	{
-		// Создаем виджет
 		PlayerHUD = CreateWidget<UODPlayerHUD>(GetWorld(), PlayerHUDClass);
-		
 		if (PlayerHUD)
 		{
-			// Добавляем на экран
 			PlayerHUD->AddToViewport();
-			
-			// Сразу обновляем (чтобы показать 100%)
 			PlayerHUD->UpdateHealth(CurrentHealth, MaxHealth);
 		}
 		
-		// Подписываемся на обновление инвентаря
 		if (InventoryComponent)
 		{
 			InventoryComponent->OnInventoryUpdated.AddDynamic(this, &AODCharacter::OnInventoryUpdated);
 		}
 	}
 	
-	if (PlayerHUD)
-	{
-		PlayerHUD->AddToViewport();
-		PlayerHUD->UpdateHealth(CurrentHealth, MaxHealth);
-		
-		// НОВОЕ: Обновляем патроны при старте
-		UpdateAmmoHUD(); 
-	}
-
-	// Добавляем Mapping Context (раскладку) игроку при старте
 	if (APlayerController* PlayerController = Cast<APlayerController>(Controller))
 	{
 		if (UEnhancedInputLocalPlayerSubsystem* Subsystem = ULocalPlayer::GetSubsystem<UEnhancedInputLocalPlayerSubsystem>(PlayerController->GetLocalPlayer()))
 		{
-			// Приоритет 0 - базовый
 			Subsystem->AddMappingContext(DefaultMappingContext, 0);
 		}
 	}
 	
-	// ВЫДАЧА СТАРТОВОГО СНАРЯЖЕНИЯ
 	if (InventoryComponent)
 	{
 		for (UODItemData* Item : DefaultLoadout)
 		{
-			InventoryComponent->TryAddItem(Item); // Инвентарь сам решит: надеть или в рюкзак
+			InventoryComponent->TryAddItem(Item); 
 		}
 	}
 	
-	// Запоминаем исходный FOV камеры (обычно 90 градусов)
 	if (FollowCamera)
 	{
 		DefaultFOV = FollowCamera->FieldOfView;
@@ -141,102 +93,61 @@ void AODCharacter::Tick(float DeltaTime)
 {
 	Super::Tick(DeltaTime);
 	
-	// Логика Зума (FOV)
 	if (FollowCamera)
 	{
-		// Целевой угол: Если целимся -> берем AimedFOV, иначе -> DefaultFOV
 		float TargetFOV = bIsAiming ? AimedFOV : DefaultFOV;
-
-		// Текущий угол
 		float CurrentFOV = FollowCamera->FieldOfView;
-
-		// Плавное изменение (FInterpTo) от Текущего к Целевому
 		float NewFOV = FMath::FInterpTo(CurrentFOV, TargetFOV, DeltaTime, ZoomInterpSpeed);
-
-		// Применяем новый угол камере
 		FollowCamera->SetFieldOfView(NewFOV);
 		
-		// Проверяем, на что смотрим
 		PerformInteractionCheck();
 	}
 }
 
 void AODCharacter::SetupPlayerInputComponent(UInputComponent* PlayerInputComponent)
 {
-	// Мы не вызываем Super, потому что настраиваем свой Enhanced Input
-	
-	// Приводим стандартный компонент к EnhancedInputComponent
 	if (UEnhancedInputComponent* EnhancedInputComponent = Cast<UEnhancedInputComponent>(PlayerInputComponent))
 	{
-		// Привязываем функцию движения (Triggered вызывается каждый кадр пока кнопка нажата)
 		EnhancedInputComponent->BindAction(MoveAction, ETriggerEvent::Triggered, this, &AODCharacter::Move);
-
-		// Привязываем функцию обзора
 		EnhancedInputComponent->BindAction(LookAction, ETriggerEvent::Triggered, this, &AODCharacter::Look);
-		
-		// Привязываем стрельбу (Started = один раз при нажатии)
-		// Стрельба (FireAction)
-		// Started = Нажал кнопку -> Начинаем поливать огнем
 		EnhancedInputComponent->BindAction(ShootAction, ETriggerEvent::Started, this, &AODCharacter::StartWeaponFire);
-	
-		// Completed = Отпустил кнопку -> Прекращаем огонь
 		EnhancedInputComponent->BindAction(ShootAction, ETriggerEvent::Completed, this, &AODCharacter::StopWeaponFire);
-		
-		// Прицеливание (Started = нажали, Completed = отпустили)
 		EnhancedInputComponent->BindAction(AimAction, ETriggerEvent::Started, this, &AODCharacter::StartAiming);
 		EnhancedInputComponent->BindAction(AimAction, ETriggerEvent::Completed, this, &AODCharacter::StopAiming);
-		
-		// Перезарядка
 		EnhancedInputComponent->BindAction(ReloadAction, ETriggerEvent::Started, this, &AODCharacter::Reload);
-		
-		// InteractAction создай в редакторе позже и назначь на F
 		EnhancedInputComponent->BindAction(InteractAction, ETriggerEvent::Started, this, &AODCharacter::Interact);
 		EnhancedInputComponent->BindAction(InventoryAction, ETriggerEvent::Started, this, &AODCharacter::ToggleInventory);
-		
-		// ПРЫЖОК (Используем встроенные функции ACharacter)
 		EnhancedInputComponent->BindAction(JumpAction, ETriggerEvent::Started, this, &AODCharacter::PerformJump);
 		EnhancedInputComponent->BindAction(JumpAction, ETriggerEvent::Completed, this, &ACharacter::StopJumping);
-
-		// СПРИНТ
 		EnhancedInputComponent->BindAction(SprintAction, ETriggerEvent::Started, this, &AODCharacter::StartSprint);
 		EnhancedInputComponent->BindAction(SprintAction, ETriggerEvent::Completed, this, &AODCharacter::StopSprint);
 		
-		// В SetupPlayerInputComponent добавь (предварительно создав Action IA_Drop):
+		// Используем DropActiveWeapon вместо старого DebugDrop
 		EnhancedInputComponent->BindAction(DropAction, ETriggerEvent::Started, this, &AODCharacter::DebugDropItem);
-		
-		PlayerInputComponent->BindAction("SelectPrimary", IE_Pressed, this, &AODCharacter::SelectPrimary);
-		PlayerInputComponent->BindAction("SelectSecondary", IE_Pressed, this, &AODCharacter::SelectSecondary);
 	}
+
+	// Хотбар 1-8
+	PlayerInputComponent->BindAction<TDelegate<void(int32)>>("Hotbar1", IE_Pressed, InventoryComponent, &UODInventoryComponent::SelectHotbarSlot, 0);
+	PlayerInputComponent->BindAction<TDelegate<void(int32)>>("Hotbar2", IE_Pressed, InventoryComponent, &UODInventoryComponent::SelectHotbarSlot, 1);
+	PlayerInputComponent->BindAction<TDelegate<void(int32)>>("Hotbar3", IE_Pressed, InventoryComponent, &UODInventoryComponent::SelectHotbarSlot, 2);
+	// ... добавьте остальные по аналогии
 }
 
 void AODCharacter::PerformJump()
 {
-	// Вызываем стандартный прыжок
 	Jump();
-
-	// Играем звук
-	if (JumpSound)
-	{
-		UGameplayStatics::PlaySoundAtLocation(this, JumpSound, GetActorLocation());
-	}
+	if (JumpSound) UGameplayStatics::PlaySoundAtLocation(this, JumpSound, GetActorLocation());
 }
 
 void AODCharacter::Move(const FInputActionValue& Value)
 {
-	// Получаем вектор (X, Y) с клавиатуры
 	FVector2D MovementVector = Value.Get<FVector2D>();
-
 	if (Controller != nullptr)
 	{
-		// Выясняем, куда смотрит камера (нам нужен только поворот по YAW - вокруг вертикальной оси)
 		const FRotator Rotation = Controller->GetControlRotation();
 		const FRotator YawRotation(0, Rotation.Yaw, 0);
-
-		// Получаем направления "Вперед" и "Вправо" относительно поворота персонажа
 		const FVector ForwardDirection = FRotationMatrix(YawRotation).GetUnitAxis(EAxis::X);
 		const FVector RightDirection = FRotationMatrix(YawRotation).GetUnitAxis(EAxis::Y);
-
-		// Добавляем движение
 		AddMovementInput(ForwardDirection, MovementVector.Y);
 		AddMovementInput(RightDirection, MovementVector.X);
 	}
@@ -244,18 +155,11 @@ void AODCharacter::Move(const FInputActionValue& Value)
 
 void AODCharacter::Look(const FInputActionValue& Value)
 {
-	// Получаем дельту мыши (X, Y)
 	FVector2D LookAxisVector = Value.Get<FVector2D>();
-
-	// 2. Если целимся - уменьшаем их
-	if (bIsAiming)
-	{
-		LookAxisVector *= AimSensitivityMultiplier;
-	}
+	if (bIsAiming) LookAxisVector *= AimSensitivityMultiplier;
 	
 	if (Controller != nullptr)
 	{
-		// Вращаем контроллер (камеру)
 		AddControllerYawInput(LookAxisVector.X);
 		AddControllerPitchInput(LookAxisVector.Y);
 	}
@@ -263,139 +167,69 @@ void AODCharacter::Look(const FInputActionValue& Value)
 
 void AODCharacter::PlayFireAnimation()
 {
-	// Выбираем монтаж: если bIsAiming (целимся) -> AimFireMontage, иначе -> FireMontage
 	UAnimMontage* MontageToPlay = bIsAiming ? AimFireMontage : FireMontage;
-
 	if (MontageToPlay)
 	{
 		UAnimInstance* AnimInstance = GetMesh()->GetAnimInstance();
-		if (AnimInstance)
-		{
-			AnimInstance->Montage_Play(MontageToPlay, 1.0f);
-		}
+		if (AnimInstance) AnimInstance->Montage_Play(MontageToPlay, 1.0f);
 	}
 }
 
 void AODCharacter::StartAiming(const FInputActionValue& Value)
 {
 	bIsAiming = true;
-    
-	// --- НОВАЯ ЛОГИКА ---
-	// 1. Заставляем персонажа поворачиваться туда, куда смотрит камера
 	bUseControllerRotationYaw = true;
-
-	// 2. Отключаем поворот "в сторону движения" (чтобы можно было ходить боком/стрейфить)
 	GetCharacterMovement()->bOrientRotationToMovement = false;
-    
-	// 3. Замедляем скорость (опционально, если хочешь ходить медленнее в прицеле)
 	GetCharacterMovement()->MaxWalkSpeed = AimWalkSpeed; 
 }
 
 void AODCharacter::StopAiming(const FInputActionValue& Value)
 {
 	bIsAiming = false;
-    
-	// --- НОВАЯ ЛОГИКА ---
-	// 1. Отцепляем персонажа от камеры (свободный обзор)
 	bUseControllerRotationYaw = false;
-
-	// 2. Включаем поворот "в сторону движения" (чтобы бегать свободно)
 	GetCharacterMovement()->bOrientRotationToMovement = true;
-    
-	// 3. Возвращаем обычную скорость
 	GetCharacterMovement()->MaxWalkSpeed = NormalWalkSpeed;
 }
 
 float AODCharacter::TakeDamage(float DamageAmount, FDamageEvent const& DamageEvent, AController* EventInstigator, AActor* DamageCauser)
 {
 	float ActualDamage = Super::TakeDamage(DamageAmount, DamageEvent, EventInstigator, DamageCauser);
-
-	// Вычитаем здоровье
 	CurrentHealth = FMath::Clamp(CurrentHealth - ActualDamage, 0.0f, MaxHealth);
-
-	// Пишем в лог (чтобы ты видел, что тебе больно)
-	UE_LOG(LogTemp, Warning, TEXT("OUCH! Player Health: %f"), CurrentHealth);
-
-	// --- ОБНОВЛЕНИЕ UI ---
-	if (PlayerHUD)
-	{
-		PlayerHUD->UpdateHealth(CurrentHealth, MaxHealth);
-	}
-	
-	// Если здоровье кончилось - умираем
-	if (CurrentHealth <= 0.0f)
-	{
-		Die();
-	}
-
+	if (PlayerHUD) PlayerHUD->UpdateHealth(CurrentHealth, MaxHealth);
+	if (CurrentHealth <= 0.0f) Die();
 	return ActualDamage;
 }
 
 void AODCharacter::Die()
 {
-	UE_LOG(LogTemp, Error, TEXT("=== PLAYER DIED ==="));
-
-	// 1. Отключаем управление (чтобы нельзя было бегать мертвым)
-	if (APlayerController* PC = Cast<APlayerController>(GetController()))
-	{
-		DisableInput(PC);
-	}
-	
-	// Крик смерти
-	if (DeathSound)
-	{
-		UGameplayStatics::PlaySoundAtLocation(this, DeathSound, GetActorLocation());
-	}
-
-	// 2. Включаем физику (Ragdoll), чтобы упасть как мешок
+	if (APlayerController* PC = Cast<APlayerController>(GetController())) DisableInput(PC);
+	if (DeathSound) UGameplayStatics::PlaySoundAtLocation(this, DeathSound, GetActorLocation());
 	GetMesh()->SetSimulatePhysics(true);
 	GetMesh()->SetCollisionProfileName(TEXT("Ragdoll"));
-	
-	// 3. Отключаем капсулу (чтобы она не мешала падать)
 	GetCapsuleComponent()->SetCollisionEnabled(ECollisionEnabled::NoCollision);
-
-	// (Позже здесь добавим перезагрузку уровня через 3 секунды)
 }
 
 void AODCharacter::Reload(const FInputActionValue& Value)
 {
-	if (InventoryComponent->GetCurrentWeapon())
+	if (InventoryComponent->GetCurrentWeapon() && InventoryComponent->GetCurrentWeapon()->CurrentAmmo < InventoryComponent->GetCurrentWeapon()->MagCapacity)
 	{
-		// 2. Визуал (проиграть анимацию рук)
-		// Убедись, что в оружии выбран правильный монтаж (Reload_Rifle)
+		InventoryComponent->GetCurrentWeapon()->Reload();
 		if (InventoryComponent->GetCurrentWeapon()->ReloadMontage)
 		{
 			UAnimInstance* AnimInstance = GetMesh()->GetAnimInstance();
-			if (AnimInstance)
-			{
-				if (InventoryComponent->GetCurrentWeapon()->CurrentAmmo >= InventoryComponent->GetCurrentWeapon()->MagCapacity)
-				{
-					UE_LOG(LogTemp, Error, TEXT("FULL AMMO!!"));
-				} else
-				{
-					// 1. Логика оружия (запустить таймер и флаг)
-					InventoryComponent->GetCurrentWeapon()->Reload();
-					AnimInstance->Montage_Play(InventoryComponent->GetCurrentWeapon()->ReloadMontage);
-				}
-			}
+			if (AnimInstance) AnimInstance->Montage_Play(InventoryComponent->GetCurrentWeapon()->ReloadMontage);
 		}
 	}
 }
 
 void AODCharacter::StartWeaponFire(const FInputActionValue& Value)
 {
-	if (InventoryComponent->GetCurrentWeapon())
-	{
-		InventoryComponent->GetCurrentWeapon()->StartFire();
-	}
+	if (InventoryComponent->GetCurrentWeapon()) InventoryComponent->GetCurrentWeapon()->StartFire();
 }
 
 void AODCharacter::StopWeaponFire(const FInputActionValue& Value)
 {
-	if (InventoryComponent->GetCurrentWeapon())
-	{
-		InventoryComponent->GetCurrentWeapon()->StopFire();
-	}
+	if (InventoryComponent->GetCurrentWeapon()) InventoryComponent->GetCurrentWeapon()->StopFire();
 }
 
 void AODCharacter::UpdateAmmoHUD()
@@ -410,29 +244,20 @@ void AODCharacter::PerformInteractionCheck()
 {
 	if (!FollowCamera || !CameraBoom) return;
 
-	// Начало трейса - камера (она далеко сзади)
 	FVector Start = FollowCamera->GetComponentLocation();
-    
-	// Длина луча теперь = Расстояние от камеры до игрока + Дистанция взаимодействия
 	float CombinedDistance = CameraBoom->TargetArmLength + InteractionDistance;
-    
-	// Конец луча
 	FVector End = Start + (FollowCamera->GetForwardVector() * CombinedDistance);
 
 	FHitResult HitResult;
 	FCollisionQueryParams Params;
 	Params.AddIgnoredActor(this);
-    
-	// Игнорируем оружие, чтобы не "втыкаться" в него взглядом
-	if (InventoryComponent->GetCurrentWeapon()) Params.AddIgnoredActor(InventoryComponent->GetCurrentWeapon());
+	if (GetCurrentWeapon()) Params.AddIgnoredActor(GetCurrentWeapon());
 
 	bool bHit = GetWorld()->LineTraceSingleByChannel(HitResult, Start, End, ECC_Visibility, Params);
 
-	// Дальше ваша логика проверки интерфейса без изменений...
 	if (bHit && HitResult.GetActor())
 	{
 		AActor* HitActor = HitResult.GetActor();
-
 		if (HitActor == FocusedActor) return; 
 
 		if (HitActor->Implements<UODInteractInterface>())
@@ -456,12 +281,7 @@ void AODCharacter::PerformInteractionCheck()
 
 void AODCharacter::Interact()
 {
-	if (FocusedActor)
-	{
-		// Вызываем функцию интерфейса у объекта
-		// Execute_Interact - это специальный метод Unreal для вызова интерфейсов (работает и с C++, и с Blueprint)
-		IODInteractInterface::Execute_Interact(FocusedActor, this);
-	}
+	if (FocusedActor) IODInteractInterface::Execute_Interact(FocusedActor, this);
 }
 
 void AODCharacter::ToggleInventory()
@@ -469,36 +289,21 @@ void AODCharacter::ToggleInventory()
 	APlayerController* PC = Cast<APlayerController>(GetController());
 	if (!PC || !InventoryWindowClass) return;
 
-	// Если окна еще нет - создаем
-	if (!InventoryWindow)
-	{
-		InventoryWindow = CreateWidget<UODInventoryWindow>(GetWorld(), InventoryWindowClass);
-	}
+	if (!InventoryWindow) InventoryWindow = CreateWidget<UODInventoryWindow>(GetWorld(), InventoryWindowClass);
 
 	if (InventoryWindow)
 	{
 		if (InventoryWindow->IsInViewport())
 		{
-			// ЗАКРЫВАЕМ
 			InventoryWindow->RemoveFromParent();
-
-			// Возвращаем управление в игру
 			FInputModeGameOnly InputMode;
 			PC->SetInputMode(InputMode);
 			PC->bShowMouseCursor = false;
 		}
 		else
 		{
-			// ОТКРЫВАЕМ
 			InventoryWindow->AddToViewport();
-			
-			// Обновляем данные перед показом
-			if (InventoryComponent)
-			{
-				InventoryWindow->RefreshInventory(InventoryComponent->GetItems());
-			}
-
-			// Включаем мышку
+			if (InventoryComponent) InventoryWindow->RefreshInventory(InventoryComponent->GetItems());
 			FInputModeGameAndUI InputMode;
 			InputMode.SetWidgetToFocus(InventoryWindow->TakeWidget());
 			PC->SetInputMode(InputMode);
@@ -509,7 +314,6 @@ void AODCharacter::ToggleInventory()
 
 void AODCharacter::OnInventoryUpdated()
 {
-	// Если окно открыто - обновляем его
 	if (InventoryWindow && InventoryWindow->IsInViewport() && InventoryComponent)
 	{
 		InventoryWindow->RefreshInventory(InventoryComponent->GetItems());
@@ -518,9 +322,7 @@ void AODCharacter::OnInventoryUpdated()
 
 void AODCharacter::StartSprint(const FInputActionValue& Value)
 {
-	// Нельзя бежать, если целимся (опционально)
 	if (bIsAiming) return;
-
 	bIsSprinting = true;
 	GetCharacterMovement()->MaxWalkSpeed = SprintSpeed;
 }
@@ -535,13 +337,12 @@ void AODCharacter::DebugDropItem()
 {
 	if (InventoryComponent)
 	{
-		// 1. Если в руках есть оружие - выбрасываем ЕГО
-		if (InventoryComponent->GetPrimaryWeapon().IsValid())
+		// Если есть оружие в руках - выбрасываем его
+		if (InventoryComponent->GetCurrentWeapon())
 		{
-			// EEquipmentSlot::Primary - это слот основного оружия
-			InventoryComponent->DropEquippedItem(EEquipmentSlot::Primary);
+			InventoryComponent->DropActiveWeapon();
 		}
-		// 2. Если рук пустые, но есть что-то в рюкзаке - выбрасываем первый предмет
+		// Иначе выбрасываем первый предмет из рюкзака
 		else if (InventoryComponent->GetItems().Num() > 0)
 		{
 			InventoryComponent->DropItem(0);
@@ -549,42 +350,16 @@ void AODCharacter::DebugDropItem()
 	}
 }
 
-bool AODCharacter::GetIsAiming_Implementation() const
-{
-	return bIsAiming;
-}
-
-bool AODCharacter::GetIsSprinting_Implementation() const
-{
-	// Проверяем, нажата ли кнопка И движемся ли мы вперед
-	// (Обычно переменная bIsSprinting у тебя уже есть, если нет - добавь в .h)
-	return bIsSprinting; 
-}
-
-bool AODCharacter::HasWeapon_Implementation() const
-{
-	return (InventoryComponent->GetCurrentWeapon() != nullptr);
-}
-
+// Реализация интерфейса
+bool AODCharacter::GetIsAiming_Implementation() const { return bIsAiming; }
+bool AODCharacter::GetIsSprinting_Implementation() const { return bIsSprinting; }
+bool AODCharacter::HasWeapon_Implementation() const { return (GetCurrentWeapon() != nullptr); }
+AODWeapon* AODCharacter::GetCurrentWeapon() const { return InventoryComponent ? InventoryComponent->GetCurrentWeapon() : nullptr; }
+// AIM Pitch
 float AODCharacter::GetAimPitch_Implementation() const
 {
 	if (!GetController()) return 0.0f;
-
-	// Получаем разницу между направлением взгляда и поворотом тела
-	FRotator ControlRot = GetControlRotation();
-	FRotator ActorRot = GetActorRotation();
-    
-	// Вычисляем дельту и нормализуем её (чтобы избежать резких перескоков 0-360)
-	FRotator Delta = ControlRot - ActorRot;
+	FRotator Delta = GetControlRotation() - GetActorRotation();
 	Delta.Normalize();
-    
 	return Delta.Pitch;
-}
-
-void AODCharacter::SelectPrimary() {
-	if (InventoryComponent) InventoryComponent->SwitchWeapon(EEquipmentSlot::Primary);
-}
-
-void AODCharacter::SelectSecondary() {
-	if (InventoryComponent) InventoryComponent->SwitchWeapon(EEquipmentSlot::Secondary);
 }

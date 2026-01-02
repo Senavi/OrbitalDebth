@@ -5,306 +5,272 @@
 
 UODInventoryComponent::UODInventoryComponent()
 {
-    PrimaryComponentTick.bCanEverTick = false;
+	PrimaryComponentTick.bCanEverTick = false;
 }
 
 void UODInventoryComponent::BeginPlay()
 {
-    Super::BeginPlay();
+	Super::BeginPlay();
+	// Инициализируем 8 пустых слотов хотбара
+	HotbarItems.SetNum(8);
+}
+
+FInventoryItem* UODInventoryComponent::GetSlotReference(EEquipmentSlot SlotType, int32 Index)
+{
+	if (SlotType == EEquipmentSlot::None)
+	{
+		if (Items.IsValidIndex(Index)) return &Items[Index];
+	}
+	else if (SlotType == EEquipmentSlot::Hotbar)
+	{
+		if (HotbarItems.IsValidIndex(Index)) return &HotbarItems[Index];
+	}
+	else if (SlotType == EEquipmentSlot::Armor)
+	{
+		return &ArmorItem;
+	}
+	return nullptr;
 }
 
 bool UODInventoryComponent::TryAddItem(UODItemData* ItemToAdd, int32 Quantity, int32 Ammo)
 {
-    if (!ItemToAdd) return false;
+	if (!ItemToAdd) return false;
 
-    // --- СОЗДАЕМ ВРЕМЕННУЮ СТРУКТУРУ ---
-    // Мы "упаковываем" данные, чтобы передать их в функцию экипировки
-    FInventoryItem TempItem;
-    TempItem.ItemData = ItemToAdd;
-    TempItem.Quantity = Quantity;
-    TempItem.AmmoState = Ammo;
+	// 1. Пробуем положить в Броню
+	if (ItemToAdd->EquipSlotType == EEquipmentSlot::Armor && !ArmorItem.IsValid())
+	{
+		ArmorItem.ItemData = ItemToAdd;
+		ArmorItem.Quantity = 1;
+		ArmorItem.AmmoState = -1;
+		OnInventoryUpdated.Broadcast();
+		return true;
+	}
 
-    // --- ЭТАП 1: АВТО-ЭКИПИРОВКА ---
-    
-    // 1. Основное оружие
-    if (ItemToAdd->EquipSlotType == EEquipmentSlot::Primary)
-    {
-        if (!PrimaryWeapon.IsValid()) 
-        {
-            // Передаем адрес временной структуры (&TempItem)
-            EquipItem(&TempItem); 
-            return true;
-        }
-    }
-    // 2. Вторичное оружие
-    else if (ItemToAdd->EquipSlotType == EEquipmentSlot::Secondary)
-    {
-        if (!SecondaryWeapon.IsValid())
-        {
-            EquipItem(&TempItem); // Передаем структуру
-            return true;
-        }
-    }
-    // 3. Броня
-    else if (ItemToAdd->EquipSlotType == EEquipmentSlot::Body)
-    {
-        if (!ArmorChest.IsValid())
-        {
-            EquipItem(&TempItem); // Передаем структуру
-            return true;
-        }
-    }
+	// 2. Пробуем положить в первый свободный слот Хотбара
+	if (ItemToAdd->EquipSlotType == EEquipmentSlot::Hotbar)
+	{
+		for (int32 i = 0; i < HotbarItems.Num(); i++)
+		{
+			if (!HotbarItems[i].IsValid())
+			{
+				HotbarItems[i].ItemData = ItemToAdd;
+				HotbarItems[i].Quantity = Quantity;
+				HotbarItems[i].AmmoState = Ammo;
+				
+				// Если мы положили оружие и руки были пусты - берем его
+				if (!SpawnedWeaponActor && ItemToAdd->ItemType == EItemType::Weapon)
+				{
+					SelectHotbarSlot(i);
+				}
+				
+				OnInventoryUpdated.Broadcast();
+				return true;
+			}
+		}
+	}
 
-    // --- ЭТАП 2: РЮКЗАК ---
-    
-    // 1. Стакинг
-    for (FInventoryItem& Item : Items)
-    {
-        if (Item.ItemData == ItemToAdd)
-        {
-            Item.Quantity += Quantity; // Прибавляем кол-во
-            OnInventoryUpdated.Broadcast();
-            return true;
-        }
-    }
+	// 3. Кладем в Рюкзак (Стакинг)
+	for (FInventoryItem& Item : Items)
+	{
+		if (Item.ItemData == ItemToAdd)
+		{
+			Item.Quantity += Quantity;
+			OnInventoryUpdated.Broadcast();
+			return true;
+		}
+	}
 
-    // 2. Новый слот
-    if (Items.Num() >= Capacity)
-    {
-        return false;
-    }
+	// 4. Новый слот в рюкзаке
+	if (Items.Num() < Capacity)
+	{
+		FInventoryItem NewItem;
+		NewItem.ItemData = ItemToAdd;
+		NewItem.Quantity = Quantity;
+		NewItem.AmmoState = Ammo;
+		Items.Add(NewItem);
+		OnInventoryUpdated.Broadcast();
+		return true;
+	}
 
-    // Добавляем новую запись с учетом патронов
-    FInventoryItem NewItem;
-    NewItem.ItemData = ItemToAdd;
-    NewItem.Quantity = Quantity;
-    NewItem.AmmoState = Ammo; // Записываем патроны
-    
-    Items.Add(NewItem);
-
-    OnInventoryUpdated.Broadcast();
-    return true;
-}
-bool UODInventoryComponent::EquipItem(FInventoryItem* ItemInfo)
-{
-    // 1. Проверка валидности
-    if (!ItemInfo || !ItemInfo->IsValid()) return false;
-    
-    // Достаем DataAsset из структуры для удобства
-    UODItemData* Data = ItemInfo->ItemData;
-
-    // --- PRIMARY WEAPON ---
-    if (Data->EquipSlotType == EEquipmentSlot::Primary)
-    {
-        // Сохраняем структуру целиком (вместе с патронами)
-        PrimaryWeapon = *ItemInfo; 
-        
-        // Спауним
-        if (Data->WeaponActorClass)
-        {
-            if (SpawnedPrimaryWeapon) SpawnedPrimaryWeapon->Destroy();
-
-            if (AActor* Owner = GetOwner())
-            {
-                 FActorSpawnParameters Params;
-                 Params.Owner = Owner;
-                 Params.Instigator = Cast<APawn>(Owner);
-                 
-                 SpawnedPrimaryWeapon = GetWorld()->SpawnActor<AODWeapon>(Data->WeaponActorClass, FVector::ZeroVector, FRotator::ZeroRotator, Params);
-                 
-                 if (SpawnedPrimaryWeapon)
-                 {
-                     if (ACharacter* Char = Cast<ACharacter>(Owner))
-                     {
-                        SpawnedPrimaryWeapon->AttachToComponent(Char->GetMesh(), FAttachmentTransformRules::SnapToTargetIncludingScale, TEXT("WeaponSocket"));
-                        
-                        // --- ПРИМЕНЯЕМ ПАТРОНЫ ---
-                        // Если в структуре записано кол-во патронов (>=0), ставим его.
-                        if (ItemInfo->AmmoState >= 0)
-                        {
-                            SpawnedPrimaryWeapon->CurrentAmmo = ItemInfo->AmmoState;
-                        }
-                        
-                        // Обновляем HUD
-                        if (AODCharacter* ODChar = Cast<AODCharacter>(Char))
-                        {
-                            ODChar->UpdateAmmoHUD();
-                        }
-                     }
-                 }
-            }
-        }
-    }
-    // Сюда можно добавить блоки else if для Secondary и Armor, если нужно
-
-    OnInventoryUpdated.Broadcast();
-    return true;
-}
-
-void UODInventoryComponent::DropItem(int32 ItemIndex)
-{
-    if (!Items.IsValidIndex(ItemIndex)) return;
-
-    FInventoryItem& ItemToDrop = Items[ItemIndex];
-    
-    // Запоминаем, сколько всего предметов в стаке (например, 5)
-    int32 TotalQuantity = ItemToDrop.Quantity; 
-
-    if (AActor* Owner = GetOwner())
-    {
-        if (ItemToDrop.ItemData && ItemToDrop.ItemData->ItemClass)
-        {
-            // --- ЦИКЛ РАССЫПАНИЯ ---
-            // Выполняем спаун столько раз, сколько предметов в стаке
-            for (int32 i = 0; i < TotalQuantity; i++)
-            {
-                // Делаем небольшой разброс координат, чтобы предметы не застряли друг в друге
-                float RandomX = FMath::RandRange(-30.0f, 30.0f);
-                float RandomY = FMath::RandRange(-30.0f, 30.0f);
-               
-                // Спауним перед игроком + случайное смещение
-                FVector SpawnLoc = Owner->GetActorLocation() 
-                                 + (Owner->GetActorForwardVector() * 100.0f) 
-                                 + FVector(RandomX, RandomY, 50);
-
-                FActorSpawnParameters Params;
-                Params.SpawnCollisionHandlingOverride = ESpawnActorCollisionHandlingMethod::AdjustIfPossibleButAlwaysSpawn;
-
-                // Спауним со случайным поворотом
-                AActor* SpawnedActor = GetWorld()->SpawnActor<AActor>(
-                    ItemToDrop.ItemData->ItemClass, 
-                    SpawnLoc, 
-                    FRotator(FMath::RandRange(0.0f, 360.0f), FMath::RandRange(0.0f, 360.0f), 0.0f), 
-                    Params
-                );
-              
-                if (AODItemBase* Pickup = Cast<AODItemBase>(SpawnedActor))
-                {
-                    // ВАЖНО: Каждому предмету ставим количество 1 !
-                    Pickup->InitDrop(ItemToDrop.ItemData, 1);
-                }
-            }
-        }
-    }
-    
-    // Удаляем стак из инвентаря
-    Items.RemoveAt(ItemIndex);
-    OnInventoryUpdated.Broadcast();
-}
-
-void UODInventoryComponent::DropEquippedItem(EEquipmentSlot SlotType)
-{
-    FInventoryItem* ItemToDrop = nullptr;
-    int32 CurrentWeaponAmmo = -1; // По умолчанию
-    
-    if (SlotType == EEquipmentSlot::Primary)
-    {
-        ItemToDrop = &PrimaryWeapon;
-        // Если оружие существует, запоминаем сколько в нем патронов перед уничтожением
-        if (SpawnedPrimaryWeapon)
-        {
-            CurrentWeaponAmmo = SpawnedPrimaryWeapon->CurrentAmmo;
-        }
-    }
-    
-    // Если слота нет или он пуст - выходим
-    if (!ItemToDrop || !ItemToDrop->IsValid()) return;
-
-    // 2. Спауним коробку в мире
-    if (AActor* Owner = GetOwner())
-    {
-        FVector SpawnLoc = Owner->GetActorLocation() + (Owner->GetActorForwardVector() * 100.0f) + FVector(0,0,50);
-        
-        if (ItemToDrop->ItemData && ItemToDrop->ItemData->ItemClass)
-        {
-            FActorSpawnParameters Params;
-            Params.SpawnCollisionHandlingOverride = ESpawnActorCollisionHandlingMethod::AdjustIfPossibleButAlwaysSpawn;
-             
-            AActor* SpawnedActor = GetWorld()->SpawnActor<AActor>(ItemToDrop->ItemData->ItemClass, SpawnLoc, FRotator::ZeroRotator, Params);
-             
-            if (AODItemBase* Pickup = Cast<AODItemBase>(SpawnedActor))
-            {
-                Pickup->InitDrop(ItemToDrop->ItemData, ItemToDrop->Quantity, CurrentWeaponAmmo);
-            }
-        }
-    }
-
-    // 3. УНИЧТОЖАЕМ ОРУЖИЕ В РУКАХ (Если это Primary)
-    if (SlotType == EEquipmentSlot::Primary && SpawnedPrimaryWeapon)
-    {
-        SpawnedPrimaryWeapon->Destroy();
-        SpawnedPrimaryWeapon = nullptr;
-    }
-
-    // 4. Очищаем данные слота
-    ItemToDrop->Clear();
-
-    // 5. Обновляем UI
-    OnInventoryUpdated.Broadcast();
-    
-    UE_LOG(LogTemp, Warning, TEXT("Dropped Equipped Item!"));
-}
-
-// ODInventoryComponent.cpp
-
-FInventoryItem* UODInventoryComponent::GetItemSlot(EEquipmentSlot Slot, int32 Index)
-{
-    if (Slot == EEquipmentSlot::None) {
-        return Items.IsValidIndex(Index) ? &Items[Index] : nullptr;
-    }
-    if (Slot == EEquipmentSlot::Primary) return &PrimaryWeapon;
-    if (Slot == EEquipmentSlot::Secondary) return &SecondaryWeapon;
-    if (Slot == EEquipmentSlot::Body) return &ArmorChest;
-    return nullptr;
+	return false; 
 }
 
 void UODInventoryComponent::TransferItem(EEquipmentSlot SourceSlot, int32 SourceIndex, EEquipmentSlot TargetSlot, int32 TargetIndex)
 {
-    FInventoryItem* Source = GetItemSlot(SourceSlot, SourceIndex);
-    FInventoryItem* Target = GetItemSlot(TargetSlot, TargetIndex);
+	FInventoryItem* Source = GetSlotReference(SourceSlot, SourceIndex);
+	FInventoryItem* Target = GetSlotReference(TargetSlot, TargetIndex);
 
-    if (!Source || !Source->IsValid()) return;
+	if (!Source || !Source->IsValid()) return;
+    
+	// Проверка типов
+	if (TargetSlot == EEquipmentSlot::Armor)
+	{
+		if (Source->ItemData->EquipSlotType != EEquipmentSlot::Armor) return;
+	}
+	else if (TargetSlot == EEquipmentSlot::Hotbar)
+	{
+		// В хотбар нельзя броню
+		if (Source->ItemData->EquipSlotType == EEquipmentSlot::Armor) return; 
+	}
 
-    // ПЕРЕВІРКА: чи підходить предмет для цільового слоту екіпіровки?
-    if (TargetSlot != EEquipmentSlot::None) {
-        if (Source->ItemData->EquipSlotType != TargetSlot) return; 
-    }
+	// Создание слота в рюкзаке, если кинули в пустоту
+	if (TargetSlot == EEquipmentSlot::None && !Target)
+	{
+		Items.Add(*Source);
+		
+		if (SourceSlot == EEquipmentSlot::None) Items.RemoveAt(SourceIndex);
+		else Source->Clear();
 
-    // ЛОГІКА ОБМІНУ (SWAP)
-    FInventoryItem Temp = *Target;
-    *Target = *Source;
-    *Source = Temp;
+		// Если убрали активное оружие
+		if (SourceSlot == EEquipmentSlot::Hotbar && SourceIndex == ActiveHotbarIndex)
+		{
+			if (SpawnedWeaponActor) 
+			{
+				SpawnedWeaponActor->Destroy();
+				SpawnedWeaponActor = nullptr;
+			}
+		}
+		
+		OnInventoryUpdated.Broadcast();
+		return;
+	}
 
-    // Якщо перемістили щось в/з рюкзака, видаляємо порожні записи
-    if (SourceSlot == EEquipmentSlot::None && !Source->IsValid()) {
-        Items.RemoveAt(SourceIndex);
-    }
+	if (!Target) return;
 
-    // Оновлюємо візуал зброї, якщо змінився активний слот
-    if (TargetSlot == ActiveWeaponSlot || SourceSlot == ActiveWeaponSlot) {
-        SwitchWeapon(ActiveWeaponSlot);
-    }
+	// --- SWAP ---
+	FInventoryItem Temp = *Target;
+	*Target = *Source;
+	*Source = Temp;
 
-    OnInventoryUpdated.Broadcast();
+	// Удаление пустых из рюкзака
+	if (SourceSlot == EEquipmentSlot::None && !Source->IsValid())
+	{
+		Items.RemoveAt(SourceIndex);
+	}
+	if (TargetSlot == EEquipmentSlot::None && !Target->IsValid())
+	{
+		Items.RemoveAt(TargetIndex);
+	}
+
+	// Обновление оружия в руках
+	if ((SourceSlot == EEquipmentSlot::Hotbar && SourceIndex == ActiveHotbarIndex) ||
+		(TargetSlot == EEquipmentSlot::Hotbar && TargetIndex == ActiveHotbarIndex))
+	{
+		SelectHotbarSlot(ActiveHotbarIndex);
+	}
+
+	OnInventoryUpdated.Broadcast();
 }
 
-void UODInventoryComponent::SwitchWeapon(EEquipmentSlot NewSlot)
+void UODInventoryComponent::SelectHotbarSlot(int32 SlotIndex)
 {
-    if (NewSlot != EEquipmentSlot::Primary && NewSlot != EEquipmentSlot::Secondary) return;
-    
-    ActiveWeaponSlot = NewSlot;
-    FInventoryItem* WeaponToEquip = GetItemSlot(ActiveWeaponSlot, -1);
+	if (!HotbarItems.IsValidIndex(SlotIndex)) return;
 
-    // Знищуємо стару модель зброї в руках
-    if (SpawnedPrimaryWeapon) {
-        SpawnedPrimaryWeapon->Destroy();
-        SpawnedPrimaryWeapon = nullptr;
-    }
+	ActiveHotbarIndex = SlotIndex;
+	FInventoryItem& SelectedItem = HotbarItems[ActiveHotbarIndex];
 
-    // Спавнимо нову модель, якщо в слоті є зброя
-    if (WeaponToEquip && WeaponToEquip->IsValid()) {
-        EquipItem(WeaponToEquip); 
-    }
+	// 1. Удаляем старое
+	if (SpawnedWeaponActor)
+	{
+		SpawnedWeaponActor->Destroy();
+		SpawnedWeaponActor = nullptr;
+	}
 
-    OnInventoryUpdated.Broadcast();
+	// 2. Спауним новое (если это оружие)
+	if (SelectedItem.IsValid() && SelectedItem.ItemData->ItemType == EItemType::Weapon)
+	{
+		EquipWeaponActor(SelectedItem);
+	}
+}
+
+void UODInventoryComponent::EquipWeaponActor(const FInventoryItem& ItemInfo)
+{
+	if (!ItemInfo.ItemData || !ItemInfo.ItemData->WeaponActorClass) return;
+
+	if (AActor* Owner = GetOwner())
+	{
+		 FActorSpawnParameters Params;
+		 Params.Owner = Owner;
+		 Params.Instigator = Cast<APawn>(Owner);
+		 
+		 SpawnedWeaponActor = GetWorld()->SpawnActor<AODWeapon>(ItemInfo.ItemData->WeaponActorClass, FVector::ZeroVector, FRotator::ZeroRotator, Params);
+		 
+		 if (SpawnedWeaponActor)
+		 {
+			 if (ACharacter* Char = Cast<ACharacter>(Owner))
+			 {
+				SpawnedWeaponActor->AttachToComponent(Char->GetMesh(), FAttachmentTransformRules::SnapToTargetIncludingScale, TEXT("WeaponSocket"));
+				
+				if (ItemInfo.AmmoState >= 0)
+				{
+					SpawnedWeaponActor->CurrentAmmo = ItemInfo.AmmoState;
+				}
+				
+				if (AODCharacter* ODChar = Cast<AODCharacter>(Char))
+				{
+					ODChar->UpdateAmmoHUD();
+				}
+			 }
+		 }
+	}
+}
+
+void UODInventoryComponent::DropActiveWeapon()
+{
+	if (ActiveHotbarIndex >= 0 && HotbarItems.IsValidIndex(ActiveHotbarIndex))
+	{
+		FInventoryItem& ItemToDrop = HotbarItems[ActiveHotbarIndex];
+		
+		if (!ItemToDrop.IsValid()) return; // Пустой слот
+
+		if (SpawnedWeaponActor)
+		{
+			ItemToDrop.AmmoState = SpawnedWeaponActor->CurrentAmmo;
+			SpawnedWeaponActor->Destroy();
+			SpawnedWeaponActor = nullptr;
+		}
+
+		if (GetOwner())
+		{
+			FVector SpawnLoc = GetOwner()->GetActorLocation() + (GetOwner()->GetActorForwardVector() * 100.0f);
+			AActor* Pickup = GetWorld()->SpawnActor<AActor>(ItemToDrop.ItemData->ItemClass, SpawnLoc, FRotator::ZeroRotator);
+			if (AODItemBase* BasePickup = Cast<AODItemBase>(Pickup))
+			{
+				BasePickup->InitDrop(ItemToDrop.ItemData, ItemToDrop.Quantity, ItemToDrop.AmmoState);
+			}
+		}
+
+		ItemToDrop.Clear();
+		OnInventoryUpdated.Broadcast();
+	}
+}
+
+void UODInventoryComponent::DropItem(int32 ItemIndex)
+{
+	if (Items.IsValidIndex(ItemIndex))
+	{
+		FInventoryItem ItemToDrop = Items[ItemIndex];
+		if (GetOwner())
+		{
+			FVector SpawnLoc = GetOwner()->GetActorLocation() + (GetOwner()->GetActorForwardVector() * 100.0f);
+			AActor* Pickup = GetWorld()->SpawnActor<AActor>(ItemToDrop.ItemData->ItemClass, SpawnLoc, FRotator::ZeroRotator);
+			if (AODItemBase* BasePickup = Cast<AODItemBase>(Pickup))
+			{
+				BasePickup->InitDrop(ItemToDrop.ItemData, ItemToDrop.Quantity, ItemToDrop.AmmoState);
+			}
+		}
+
+		Items.RemoveAt(ItemIndex);
+		OnInventoryUpdated.Broadcast();
+	}
+}
+
+bool UODInventoryComponent::GetHotbarItem(int32 Index, FInventoryItem& OutItem) const
+{
+	if (HotbarItems.IsValidIndex(Index))
+	{
+		OutItem = HotbarItems[Index];
+		return true;
+	}
+	return false;
 }

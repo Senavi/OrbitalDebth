@@ -1,34 +1,28 @@
 #pragma once
 
-#include "ODWeapon.h"
 #include "CoreMinimal.h"
 #include "Components/ActorComponent.h"
 #include "ODItemData.h" 
 #include "ODInventoryComponent.generated.h"
 
-// Добавь forward declaration вверху, если нет
 class AODWeapon;
 
-// Структура конкретного предмета
 USTRUCT(BlueprintType)
 struct FInventoryItem
 {
-    GENERATED_BODY()
+	GENERATED_BODY()
 
-    UPROPERTY(EditAnywhere, BlueprintReadWrite)
-    UODItemData* ItemData = nullptr;
+	UPROPERTY(EditAnywhere, BlueprintReadWrite)
+	UODItemData* ItemData = nullptr;
 
-    UPROPERTY(EditAnywhere, BlueprintReadWrite)
-    int32 Quantity = 1;
+	UPROPERTY(EditAnywhere, BlueprintReadWrite)
+	int32 Quantity = 0;
 
-    // НОВОЕ: Состояние магазина (-1 означает "По умолчанию/Полный")
-    UPROPERTY(EditAnywhere, BlueprintReadWrite)
-    int32 AmmoState = -1; 
+	UPROPERTY(EditAnywhere, BlueprintReadWrite)
+	int32 AmmoState = -1; 
 
-    bool IsValid() const { return ItemData != nullptr; }
-    
-    // При очистке сбрасываем и патроны
-    void Clear() { ItemData = nullptr; Quantity = 0; AmmoState = -1; }
+	bool IsValid() const { return ItemData != nullptr; }
+	void Clear() { ItemData = nullptr; Quantity = 0; AmmoState = -1; }
 };
 
 DECLARE_DYNAMIC_MULTICAST_DELEGATE(FOnInventoryUpdated);
@@ -36,81 +30,82 @@ DECLARE_DYNAMIC_MULTICAST_DELEGATE(FOnInventoryUpdated);
 UCLASS( ClassGroup=(Custom), meta=(BlueprintSpawnableComponent) )
 class ORBITALDEBT_API UODInventoryComponent : public UActorComponent
 {
-    GENERATED_BODY()
+	GENERATED_BODY()
 
 public: 
-    UODInventoryComponent();
+	UODInventoryComponent();
 
 protected:
-    virtual void BeginPlay() override;
+	virtual void BeginPlay() override;
 
-    // --- НАСТРОЙКИ ---
-    UPROPERTY(EditDefaultsOnly, Category = "Inventory")
-    int32 Capacity = 20;
+	UPROPERTY(EditDefaultsOnly, Category = "Inventory")
+	int32 Capacity = 20;
 
-    // --- СЛОТЫ ЭКИПИРОВКИ (НОВОЕ) ---
-    // Это отдельные переменные, не входящие в общий массив Items
+	// --- НОВАЯ СИСТЕМА ЭКИПИРОВКИ ---
     
-    UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Equipment")
-    FInventoryItem PrimaryWeapon;
+	// Хотбар (8 слотов: индексы 0-7)
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Equipment")
+	TArray<FInventoryItem> HotbarItems;
 
-    UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Equipment")
-    FInventoryItem SecondaryWeapon;
+	// Броня
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Equipment")
+	FInventoryItem ArmorItem;
 
-    UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Equipment")
-    FInventoryItem ArmorChest; // Бронежилет
+	// Индекс активного слота (-1 если ничего не выбрано)
+	int32 ActiveHotbarIndex = -1; 
 
-    // --- РЮКЗАК (BACKPACK) ---
-    UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Inventory")
-    TArray<FInventoryItem> Items;
+	// Рюкзак
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Inventory")
+	TArray<FInventoryItem> Items;
     
-    // Ссылка на реальное оружие в руках (которое сейчас заспаунено)
-    UPROPERTY()
-    AODWeapon* SpawnedPrimaryWeapon;
-    
-    // Допоміжна функція для отримання посилання на структуру по слоту
-    FInventoryItem* GetItemSlot(EEquipmentSlot Slot, int32 Index);
+	// Ссылка на заспауненное оружие в руках
+	UPROPERTY()
+	AODWeapon* SpawnedWeaponActor;
 
 public: 
-    // --- ФУНКЦИИ ---
+	// --- ФУНКЦИИ ---
     
-    // Обновляем TryAddItem, добавляем параметр Ammo (по умолчанию -1)
-    UFUNCTION(BlueprintCallable, Category = "Inventory")
-    bool TryAddItem(UODItemData* ItemToAdd, int32 Quantity = 1, int32 Ammo = -1);
-    
-    // НОВОЕ: Выбросить предмет из конкретного слота экипировки
-    UFUNCTION(BlueprintCallable, Category = "Inventory")
-    void DropEquippedItem(EEquipmentSlot SlotType);
-    
+	UFUNCTION(BlueprintCallable, Category = "Inventory")
+	bool TryAddItem(UODItemData* ItemToAdd, int32 Quantity = 1, int32 Ammo = -1);
 
-    // НОВОЕ: Внутренняя функция надевания предмета
-    bool EquipItem(FInventoryItem* ItemInfo);
+	// Функция для Drag & Drop
+	UFUNCTION(BlueprintCallable, Category = "Inventory")
+	void TransferItem(EEquipmentSlot SourceSlot, int32 SourceIndex, EEquipmentSlot TargetSlot, int32 TargetIndex);
 
-    // Геттеры для UI
-    const TArray<FInventoryItem>& GetItems() const { return Items; }
-    
-    UFUNCTION(BlueprintCallable, Category = "Inventory")
-    FInventoryItem GetPrimaryWeapon() const { return PrimaryWeapon; }
+	// Выбор слота (1-8)
+	UFUNCTION(BlueprintCallable, Category = "Inventory")
+	void SelectHotbarSlot(int32 SlotIndex);
 
-    UPROPERTY(BlueprintAssignable, Category = "Inventory")
-    FOnInventoryUpdated OnInventoryUpdated;
+	// Выбросить активное оружие
+	UFUNCTION(BlueprintCallable, Category = "Inventory")
+	void DropActiveWeapon();
     
-    UFUNCTION(BlueprintCallable, Category = "Inventory")
-    void DropItem(int32 ItemIndex);
-    
-    // Геттер, чтобы Персонаж мог получить доступ к оружию для стрельбы
-    UFUNCTION(BlueprintCallable)
-    AODWeapon* GetCurrentWeapon() const { return SpawnedPrimaryWeapon; }
-    
-    // Поточний активний слот зброї
-    UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Equipment")
-    EEquipmentSlot ActiveWeaponSlot = EEquipmentSlot::Primary;
+	// Выбросить предмет из рюкзака
+	UFUNCTION(BlueprintCallable, Category = "Inventory")
+	void DropItem(int32 ItemIndex);
 
-    // Головна функція для Drag & Drop переміщення
-    UFUNCTION(BlueprintCallable, Category = "Inventory")
-    void TransferItem(EEquipmentSlot SourceSlot, int32 SourceIndex, EEquipmentSlot TargetSlot, int32 TargetIndex);
+	// Вспомогательная: Надеть предмет
+	void EquipWeaponActor(const FInventoryItem& ItemInfo);
 
-    // Функція перемикання зброї
-    UFUNCTION(BlueprintCallable, Category = "Inventory")
-    void SwitchWeapon(EEquipmentSlot NewSlot);
+	// Геттеры для UI и Логики
+	const TArray<FInventoryItem>& GetItems() const { return Items; }
+    
+	UFUNCTION(BlueprintCallable, Category = "Inventory")
+	bool GetHotbarItem(int32 Index, FInventoryItem& OutItem) const;
+
+	UFUNCTION(BlueprintCallable, Category = "Inventory")
+	FInventoryItem GetArmorItem() const { return ArmorItem; }
+	
+	// Для ботов (получить весь массив хотбара для дропа)
+	const TArray<FInventoryItem>& GetHotbarItems() const { return HotbarItems; }
+
+	UPROPERTY(BlueprintAssignable, Category = "Inventory")
+	FOnInventoryUpdated OnInventoryUpdated;
+    
+	UFUNCTION(BlueprintCallable)
+	AODWeapon* GetCurrentWeapon() const { return SpawnedWeaponActor; }
+    
+private:
+	// Получить указатель на слот по типу и индексу
+	FInventoryItem* GetSlotReference(EEquipmentSlot SlotType, int32 Index);
 };

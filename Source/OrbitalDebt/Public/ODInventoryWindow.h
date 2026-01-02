@@ -2,10 +2,12 @@
 
 #include "CoreMinimal.h"
 #include "Blueprint/UserWidget.h"
-#include "ODInventoryComponent.h" // Чтобы видеть структуру FInventoryItem
+#include "ODInventoryComponent.h"
 #include "ODInventoryWindow.generated.h"
 
-class UWrapBox; // Контейнер, который сам переносит элементы на новую строку
+class UWrapBox;
+class UPanelWidget; // Базовый класс для контейнеров (HorizontalBox, GridPanel и т.д.)
+class UODInventorySlot;
 
 UCLASS()
 class ORBITALDEBT_API UODInventoryWindow : public UUserWidget
@@ -13,19 +15,23 @@ class ORBITALDEBT_API UODInventoryWindow : public UUserWidget
 	GENERATED_BODY()
 
 public:
-	// Главная функция: очищает сетку и рисует всё заново
 	void RefreshInventory(const TArray<FInventoryItem>& Items);
 
 protected:
-	// Сетка (контейнер)
+	// Сетка для лута (Рюкзак)
 	UPROPERTY(meta = (BindWidget))
 	UWrapBox* ItemGrid;
 
-	// Какой виджет создавать для каждого предмета (WBP_InventorySlot)
-	UPROPERTY(EditDefaultsOnly, Category = "Inventory")
-	TSubclassOf<class UODInventorySlot> SlotWidgetClass;
-	
-	// НОВОЕ: Отдельный виджет для слота оружия (добавим его в дизайнере)
+	// Контейнер для 8 слотов хотбара (Horizontal Box или Grid Panel)
+	// В Дизайнере назовите этот контейнер "HotbarGrid"
 	UPROPERTY(meta = (BindWidget))
-	class UODInventorySlot* Slot_PrimaryWeapon;
+	UPanelWidget* HotbarGrid;
+    
+	// Отдельный слот для брони
+	// В Дизайнере назовите слот "Slot_Armor"
+	UPROPERTY(meta = (BindWidget))
+	UODInventorySlot* Slot_Armor;
+    
+	UPROPERTY(EditDefaultsOnly, Category = "Inventory")
+	TSubclassOf<UODInventorySlot> SlotWidgetClass;
 };
